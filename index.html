@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#09141E">
+  <title>Check-in</title>
+  <!-- Leitor de QR codes (jsQR, licença Apache-2.0) -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" defer></script>
+  <style>
+    :root {
+      --azul: #09141E; --azul-2: #131F2B; --dourado: #E8CC80; --dourado-2: #B8903A;
+      --texto: #F4F1EA; --suave: rgba(244,241,234,.62); --linha: rgba(232,204,128,.22);
+      --ok: #1E8E4E; --aviso: #C98A0B; --erro: #B3261E;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: radial-gradient(ellipse at 50% 0%, var(--azul-2), var(--azul) 70%) fixed;
+      color: var(--texto); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    [hidden] { display: none !important; }
+    main { max-width: 520px; margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) 16px 32px; min-height: 100%; display: flex; flex-direction: column; gap: 18px; }
+    h1 { font-family: Georgia, serif; font-weight: 400; font-size: 1.6rem; margin: 0; letter-spacing: .02em; }
+    .eyebrow { font-size: .72rem; letter-spacing: .2em; text-transform: uppercase; color: var(--dourado); margin: 0 0 4px; }
+    .card { background: rgba(255,255,255,.04); border: 1px solid var(--linha); border-radius: 18px; padding: 20px; }
+    label { display: block; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); margin-bottom: 8px; }
+    input[type=password], input[type=text] {
+      width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--linha);
+      background: rgba(0,0,0,.25); color: var(--texto); font: inherit; font-size: 1.05rem;
+    }
+    input:focus { outline: 2px solid var(--dourado); outline-offset: 1px; }
+    .check { display: flex; gap: 10px; align-items: center; text-transform: none; letter-spacing: 0; font-size: .9rem; color: var(--suave); margin: 14px 0 0; }
+    .check input { width: 18px; height: 18px; accent-color: var(--dourado-2); }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+      padding: 15px 18px; border-radius: 999px; border: 0; cursor: pointer;
+      font: inherit; font-weight: 700; letter-spacing: .04em;
+      background: linear-gradient(180deg, #D4B75E, #B8952E); color: var(--azul);
+    }
+    .btn:disabled { opacity: .6; cursor: wait; }
+    .btn--ghost { background: transparent; color: var(--texto); border: 1px solid var(--linha); font-weight: 600; }
+    .btn--small { width: auto; padding: 9px 14px; font-size: .85rem; }
+    .row { display: flex; gap: 10px; }
+    .row > input { flex: 1; text-transform: uppercase; letter-spacing: .08em; }
+    .row > .btn { width: auto; flex-shrink: 0; }
+    .msg { margin: 12px 0 0; font-size: .9rem; color: #FFB4AB; min-height: 1.2em; }
+    .topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .contador { display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+    .contador strong { font-size: 2rem; color: var(--dourado); line-height: 1; }
+    .contador span { color: var(--suave); font-size: .9rem; }
+    .barra { height: 6px; border-radius: 6px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 10px; }
+    .barra i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--dourado-2), var(--dourado)); transition: width .4s; }
+
+    .camara { position: relative; aspect-ratio: 1 / 1; border-radius: 18px; overflow: hidden; background: #000; border: 1px solid var(--linha); }
+    .camara video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .camara .mira { position: absolute; inset: 18%; border: 3px solid rgba(232,204,128,.85); border-radius: 18px; box-shadow: 0 0 0 9999px rgba(0,0,0,.35); pointer-events: none; }
+    .camara .ligar { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; color: var(--suave); }
+    .camara .ligar .btn { width: auto; }
+    .nota { font-size: .8rem; color: var(--suave); margin: 0; text-align: center; }
+
+    /* Resultado em ecrã inteiro */
+    .resultado {
+      position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px; padding: 32px 24px; text-align: center; color: #fff;
+    }
+    .resultado.ok { background: var(--ok); }
+    .resultado.aviso { background: var(--aviso); }
+    .resultado.erro { background: var(--erro); }
+    .resultado .icone { font-size: 4.5rem; line-height: 1; }
+    .resultado .titulo { font-size: 2rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; margin: 0; }
+    .resultado .nome { font-size: 1.5rem; font-weight: 600; margin: 6px 0 0; }
+    .resultado .detalhe { font-size: 1rem; opacity: .9; margin: 0; }
+    .resultado .codigo { font-family: ui-monospace, Consolas, monospace; font-size: 1.1rem; letter-spacing: .1em; opacity: .9; margin: 4px 0 0; }
+    .resultado .acoes { display: flex; flex-direction: column; gap: 10px; width: min(320px, 100%); margin-top: 22px; }
+    .resultado .btn { background: #fff; color: #09141E; }
+    .resultado .btn--ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.6); }
+  </style>
+</head>
+<body>
+<main>
+
+  <!-- 1 · Passe geral: decifra o endereço do sistema guardado nesta página (pedida uma vez por aparelho, se "Lembrar") -->
+  <section id="ecra-pin" aria-labelledby="t-pin">
+    <p class="eyebrow">Check-in</p>
+    <h1 id="t-pin">Entrada no concerto</h1>
+    <form class="card" id="form-pin" style="margin-top:18px" autocomplete="off">
+      <label for="pin">Passe geral da equipa</label>
+      <input type="password" id="pin" required autocomplete="current-password" enterkeyhint="go">
+      <label class="check"><input type="checkbox" id="lembrar"> Lembrar neste aparelho</label>
+      <button class="btn" id="btn-pin" style="margin-top:18px">Continuar</button>
+      <p class="msg" id="msg-pin" role="alert"></p>
+    </form>
+  </section>
+
+  <!-- 2 · Código pessoal: identifica quem está a fazer o check-in (folha "Equipa") -->
+  <section id="ecra-pessoa" hidden aria-labelledby="t-pessoa">
+    <p class="eyebrow">Check-in</p>
+    <h1 id="t-pessoa">Quem está na porta?</h1>
+    <form class="card" id="form-pessoa" style="margin-top:18px" autocomplete="off">
+      <label for="pessoal">O seu código pessoal</label>
+      <input type="password" id="pessoal" required autocapitalize="characters" spellcheck="false" enterkeyhint="go" inputmode="text">
+      <button class="btn" id="btn-pessoa" style="margin-top:18px">Entrar</button>
+      <p class="msg" id="msg-pessoa" role="alert"></p>
+    </form>
+    <button class="btn btn--ghost btn--small" id="btn-esquecer" type="button" style="align-self:center">Esquecer este aparelho</button>
+  </section>
+
+  <!-- 3 · Leitura dos bilhetes -->
+  <section id="ecra-scan" hidden aria-labelledby="t-evento">
+    <div class="topo">
+      <div>
+        <p class="eyebrow" id="t-quem">Check-in</p>
+        <h1 id="t-evento">—</h1>
+      </div>
+      <button class="btn btn--ghost btn--small" id="btn-sair" type="button">Trocar pessoa</button>
+    </div>
+
+    <div class="card">
+      <div class="contador"><strong id="n-entraram">0</strong><span>de <b id="n-total">0</b> entradas</span></div>
+      <div class="barra" aria-hidden="true"><i id="barra"></i></div>
+    </div>
+
+    <div class="camara">
+      <video id="video" playsinline muted></video>
+      <div class="mira" id="mira" hidden></div>
+      <div class="ligar" id="ligar">
+        <p>Aponte a câmara para o QR code do bilhete (no telemóvel ou impresso).</p>
+        <button class="btn" type="button" id="btn-camara">Ligar câmara</button>
+      </div>
+    </div>
+
+    <form class="card" id="form-codigo" autocomplete="off">
+      <label for="codigo">Ou escreva o código do bilhete</label>
+      <div class="row">
+        <input type="text" id="codigo" placeholder="CF-XXXX-XXXX" autocapitalize="characters" spellcheck="false" enterkeyhint="send">
+        <button class="btn" id="btn-codigo">Validar</button>
+      </div>
+      <p class="msg" id="msg-scan" role="alert"></p>
+    </form>
+    <p class="nota">Cada bilhete só entra uma vez e fica registado quem o validou. Se validar por engano, use "Anular entrada".</p>
+  </section>
+
+  <!-- 4 · Resultado -->
+  <section class="resultado" id="resultado" hidden role="alertdialog" aria-live="assertive" aria-labelledby="r-titulo">
+    <div class="icone" id="r-icone" aria-hidden="true"></div>
+    <p class="titulo" id="r-titulo"></p>
+    <p class="nome" id="r-nome"></p>
+    <p class="detalhe" id="r-detalhe"></p>
+    <p class="codigo" id="r-codigo"></p>
+    <div class="acoes">
+      <button class="btn" type="button" id="btn-seguinte">Seguinte</button>
+      <button class="btn btn--ghost" type="button" id="btn-anular" hidden>Anular entrada</button>
+    </div>
+  </section>
+</main>
+
+<script>
+/* Check-in CandleFátima · ligado ao Google Apps Script dos bilhetes (acao "checkin").
+   1) A passe geral decifra o endereço do sistema (AES-GCM 256, chave derivada com PBKDF2-SHA256).
+      Gerar o bloco abaixo com gerar-config.html e colá-lo aqui.
+   2) Cada pessoa entra com o seu código pessoal (folha "Equipa"); o servidor devolve uma sessão de 6 h
+      e regista em "Entrada por" quem validou cada bilhete. */
+var CONFIG_CIFRADA = {"v":2,"iter":600000,"sal":"ecifCLqPX/Dqw4J+oOftaw==","iv":"unPo+vAdSygb8aYj","dados":"36b2jl7mmcfh6NKEuJw7cBM3FpZLN0ursNaGd4il9xCCorbdTFD7Wnk8xTkg7/X/uoAPT7vAtY8gzOOxedkLBiAmhTYB191BDAQqoki0Drl8deoHJwdnmV6Be/9eZW537BPyZJiSDTRuIUgIsfPsSOH/FqNcqYqLsrFYoHkrGv2mCrZ/BevW/aIQ"};
+
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var G_CFG = 'checkin-cfg', G_SES = 'checkin-sessao';
+  var cfg = null;              // { api } depois de decifrado
+  var sessao = null;           // { id, nome }
+  var stream = null, aLer = false, ocupado = false, ultimo = { c: '', t: 0 }, ultimoCodigo = '';
+  var canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  function mostrarEcra(id) {
+    ['ecra-pin', 'ecra-pessoa', 'ecra-scan'].forEach(function (e) { $(e).hidden = e !== id; });
+  }
+
+  /* ---------- Guardar no aparelho ---------- */
+  function guardar(nome, valor, sempre) {
+    try { (sempre ? localStorage : sessionStorage).setItem(nome, JSON.stringify(valor)); } catch (e) {}
+  }
+  function ler(nome) {
+    try { return JSON.parse(sessionStorage.getItem(nome) || localStorage.getItem(nome) || 'null'); } catch (e) { return null; }
+  }
+  function apagar(nome) { try { sessionStorage.removeItem(nome); localStorage.removeItem(nome); } catch (e) {} }
+  function lembrado() { try { return !!localStorage.getItem(G_CFG); } catch (e) { return false; } }
+
+  /* ---------- Cifra ---------- */
+  function b64(s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); }
+  async function decifrar(pin) {
+    var base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
+    var chave = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: b64(CONFIG_CIFRADA.sal), iterations: CONFIG_CIFRADA.iter, hash: 'SHA-256' },
+      base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    var claro = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(CONFIG_CIFRADA.iv) }, chave, b64(CONFIG_CIFRADA.dados));
+    return JSON.parse(new TextDecoder().decode(claro));
+  }
+
+  /* ---------- Servidor ---------- */
+  function api(dados) {
+    if (sessao) dados.sessao = sessao.id;
+    return fetch(cfg.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ acao: 'checkin', dados: dados }) })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (j) {
+        if (!j.ok) {
+          var e = new Error(String(j.erro || 'Erro').replace(/^SESSAO:\s*/, ''));
+          e.servidor = true; e.sessao = /^SESSAO:/.test(j.erro || '');
+          throw e;
+        }
+        return j;
+      });
+  }
+  function semLigacao(err) { return err && err.servidor ? err.message : 'Sem ligação ao sistema. Verifique a internet e tente de novo.'; }
+  function mostrarResumo(r) {
+    if (!r) return;
+    if (r.evento) $('t-evento').textContent = r.evento;
+    $('n-entraram').textContent = r.entraram;
+    $('n-total').textContent = r.total;
+    $('barra').style.width = (r.total ? Math.round(r.entraram / r.total * 100) : 0) + '%';
+  }
+  // Sessão terminada ou pessoa desativada: volta a pedir o código pessoal
+  function pedirCodigoOutraVez(msg) {
+    pararCamara(); sessao = null; apagar(G_SES); ocupado = false;
+    $('resultado').hidden = true; mostrarEcra('ecra-pessoa');
+    $('msg-pessoa').textContent = msg || ''; $('pessoal').focus();
+  }
+
+  /* ---------- 1 · Passe geral ---------- */
+  $('form-pin').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('msg-pin').textContent = '';
+    if (/COLAR/.test(CONFIG_CIFRADA.dados)) { $('msg-pin').textContent = 'Página por configurar: falta colar a configuração cifrada.'; return; }
+    $('btn-pin').disabled = true; $('btn-pin').textContent = 'A verificar…';
+    decifrar($('pin').value)
+      .then(function (c) {
+        cfg = c; guardar(G_CFG, c, $('lembrar').checked); $('pin').value = '';
+        mostrarEcra('ecra-pessoa'); $('pessoal').focus();
+      })
+      .catch(function () { $('msg-pin').textContent = 'Passe geral errada.'; })
+      .then(function () { $('btn-pin').disabled = false; $('btn-pin').textContent = 'Continuar'; });
+  });
+
+  /* ---------- 2 · Código pessoal ---------- */
+  $('form-pessoa').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('msg-pessoa').textContent = '';
+    $('btn-pessoa').disabled = true; $('btn-pessoa').textContent = 'A verificar…';
+    sessao = null;
+    api({ tipo: 'login', codigo: $('pessoal').value })
+      .then(function (j) {
+        sessao = { id: j.sessao, nome: j.nome }; guardar(G_SES, sessao, lembrado());
+        $('pessoal').value = ''; abrirScan(j.resumo);
+      })
+      .catch(function (err) { $('msg-pessoa').textContent = semLigacao(err); })
+      .then(function () { $('btn-pessoa').disabled = false; $('btn-pessoa').textContent = 'Entrar'; });
+  });
+  $('btn-esquecer').addEventListener('click', function () {
+    apagar(G_CFG); apagar(G_SES); cfg = null; sessao = null;
+    mostrarEcra('ecra-pin'); $('pin').focus();
+  });
+
+  function abrirScan(resumo) {
+    $('t-quem').textContent = 'Check-in · ' + sessao.nome;
+    mostrarEcra('ecra-scan');
+    mostrarResumo(resumo);
+  }
+  $('btn-sair').addEventListener('click', function () { pedirCodigoOutraVez(''); });
+
+  /* ---------- Câmara ---------- */
+  $('btn-camara').addEventListener('click', ligarCamara);
+  function ligarCamara() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('msg-scan').textContent = 'Este navegador não deixa usar a câmara. Escreva o código.'; return; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+      .then(function (s) {
+        stream = s; var v = $('video'); v.srcObject = s; v.play();
+        $('ligar').hidden = true; $('mira').hidden = false; aLer = true; requestAnimationFrame(lerQR);
+      })
+      .catch(function () { $('msg-scan').textContent = 'Sem acesso à câmara. Autorize a câmara nas definições do navegador, ou escreva o código.'; });
+  }
+  function pararCamara() {
+    aLer = false;
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+    $('ligar').hidden = false; $('mira').hidden = true;
+  }
+  var ultimaLeitura = 0;
+  function lerQR(t) {
+    if (!aLer) return;
+    requestAnimationFrame(lerQR);
+    if (ocupado || t - ultimaLeitura < 140 || !window.jsQR) return;
+    ultimaLeitura = t;
+    var v = $('video'); if (v.readyState < 2) return;
+    var w = 480, h = Math.round(v.videoHeight / v.videoWidth * 480) || 480;
+    canvas.width = w; canvas.height = h; ctx.drawImage(v, 0, 0, w, h);
+    var q = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
+    if (!q || !q.data) return;
+    var c = q.data.trim();
+    if (c === ultimo.c && Date.now() - ultimo.t < 4000) return; // o mesmo QR ainda em frente à câmara
+    ultimo = { c: c, t: Date.now() };
+    validar(c);
+  }
+
+  /* ---------- Validar ---------- */
+  $('form-codigo').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var c = $('codigo').value.trim(); if (!c) return;
+    validar(c); $('codigo').value = '';
+  });
+
+  function validar(codigo) {
+    if (ocupado || !cfg || !sessao) return;
+    ocupado = true; $('msg-scan').textContent = ''; $('btn-codigo').disabled = true;
+    api({ codigo: codigo })
+      .then(function (j) { mostrarResumo(j.resumo); resultado(j); })
+      .catch(function (err) {
+        if (err && err.sessao) return pedirCodigoOutraVez(err.message);
+        resultado({ resultado: 'falha', mensagem: semLigacao(err), codigo: codigo });
+      })
+      .then(function () { $('btn-codigo').disabled = false; });
+  }
+
+  var TEXTOS = {
+    entrada:     { c: 'ok',    i: '✓', t: 'Pode entrar' },
+    ja_usado:    { c: 'aviso', i: '!', t: 'Já entrou' },
+    cancelado:   { c: 'erro',  i: '✕', t: 'Bilhete cancelado' },
+    nao_pago:    { c: 'erro',  i: '✕', t: 'Não está pago' },
+    inexistente: { c: 'erro',  i: '✕', t: 'Código não existe' },
+    invalido:    { c: 'erro',  i: '✕', t: 'Código inválido' },
+    anulado:     { c: 'aviso', i: '↺', t: 'Entrada anulada' },
+    falha:       { c: 'erro',  i: '⚠', t: 'Erro' }
+  };
+  function resultado(j) {
+    var x = TEXTOS[j.resultado] || TEXTOS.falha;
+    var el = $('resultado');
+    el.className = 'resultado ' + x.c;
+    $('r-icone').textContent = x.i;
+    $('r-titulo').textContent = x.t;
+    $('r-nome').textContent = j.titular || '';
+    var det = '';
+    if (j.resultado === 'entrada' && j.bilhete) det = 'Bilhete ' + j.bilhete;
+    if (j.resultado === 'ja_usado') det = 'Entrada registada às ' + j.hora + (j.por ? ' por ' + j.por : '');
+    if (j.resultado === 'nao_pago') det = 'Estado da encomenda: ' + j.estado;
+    if (j.resultado === 'falha') det = j.mensagem;
+    $('r-detalhe').textContent = det;
+    $('r-codigo').textContent = j.codigo || '';
+    ultimoCodigo = j.codigo || '';
+    $('btn-anular').hidden = j.resultado !== 'entrada';
+    el.hidden = false;
+    try { if (navigator.vibrate && navigator.userActivation && navigator.userActivation.hasBeenActive) navigator.vibrate(x.c === 'ok' ? 80 : [120, 80, 120]); } catch (e) {}
+    $('btn-seguinte').focus();
+  }
+  $('btn-seguinte').addEventListener('click', function () { $('resultado').hidden = true; ocupado = false; });
+  $('btn-anular').addEventListener('click', function () {
+    if (!ultimoCodigo) return;
+    $('btn-anular').disabled = true;
+    api({ tipo: 'anular', codigo: ultimoCodigo })
+      .then(function (j) { mostrarResumo(j.resumo); resultado(j); })
+      .catch(function (err) {
+        if (err && err.sessao) return pedirCodigoOutraVez(err.message);
+        $('r-detalhe').textContent = 'Não foi possível anular. Tente de novo.';
+      })
+      .then(function () { $('btn-anular').disabled = false; });
+  });
+
+  /* ---------- Arranque: o que este aparelho já sabe ---------- */
+  cfg = ler(G_CFG);
+  sessao = ler(G_SES);
+  if (cfg && cfg.api && sessao && sessao.id) {
+    api({ tipo: 'resumo' })
+      .then(function (j) { sessao.nome = j.nome || sessao.nome; abrirScan(j.resumo); })
+      .catch(function (err) { pedirCodigoOutraVez(err && err.sessao ? err.message : ''); });
+  } else if (cfg && cfg.api) {
+    sessao = null; mostrarEcra('ecra-pessoa');
+  } else {
+    cfg = null; sessao = null;
+  }
+})();
+</script>
+</body>
+</html>
