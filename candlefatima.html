@@ -7,8 +7,10 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#09141E">
   <title>Check-in</title>
-  <!-- Leitor de QR codes (jsQR, licença Apache-2.0) -->
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" defer></script>
+  <!-- Só pode carregar: o seu próprio código, o jsQR do jsDelivr e falar com o Apps Script do Google -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net/npm/jsqr@1.4.0/; style-src 'unsafe-inline'; img-src data: blob:; media-src blob: mediastream:; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'">
+  <!-- Leitor de QR codes (jsQR, licença Apache-2.0). integrity: se o ficheiro no jsDelivr mudar, o navegador recusa-o -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous" defer></script>
   <style>
     :root {
       --azul: #09141E; --azul-2: #131F2B; --dourado: #E8CC80; --dourado-2: #B8903A;
@@ -183,7 +185,7 @@
       Gerar o bloco abaixo com gerar-config.html e colá-lo aqui.
    2) Cada pessoa entra com o seu código pessoal (folha "Equipa"); o servidor devolve uma sessão de 6 h
       e regista em "Entrada por" quem validou cada bilhete. */
-var CONFIG_CIFRADA = {"v":2,"iter":600000,"sal":"ecifCLqPX/Dqw4J+oOftaw==","iv":"unPo+vAdSygb8aYj","dados":"36b2jl7mmcfh6NKEuJw7cBM3FpZLN0ursNaGd4il9xCCorbdTFD7Wnk8xTkg7/X/uoAPT7vAtY8gzOOxedkLBiAmhTYB191BDAQqoki0Drl8deoHJwdnmV6Be/9eZW537BPyZJiSDTRuIUgIsfPsSOH/FqNcqYqLsrFYoHkrGv2mCrZ/BevW/aIQ"};
+var CONFIG_CIFRADA = {"v":2,"iter":600000,"sal":"rnQvuSeDjdH13m45yovLGg==","iv":"AeHwcwNpWZtqoJwG","dados":"C20L8+5TVWZIU3arJlGPmg6vJmHswQIaCM5gx/c/TH6aSEwkwt6fCp5VUuJ9jQhM5KJgI8S99pA544zvxmlUOx7b0zzkAwjpeU9die7QphY/rp3fwuw+s+fqyC5hyJ45JZtdlfqS5KkVm+0VekDmXjEJSFE5iWnEo00BxZ3GvmbInACRAV5DBD5auIBWreDeQ3i3tJq0CGnTM2Pa/mlTjg+/0WXdkrSiYdxX2KOTCb5dimKtb+Kewv+nZ33sKerIRnk3B938RGyoPbUlZdfVjLiSNJWf"};
 
 (function () {
   'use strict';
@@ -269,7 +271,7 @@ var CONFIG_CIFRADA = {"v":2,"iter":600000,"sal":"ecifCLqPX/Dqw4J+oOftaw==","iv":
     $('msg-pessoa').textContent = '';
     $('btn-pessoa').disabled = true; $('btn-pessoa').textContent = 'A verificar…';
     sessao = null;
-    api({ tipo: 'login', codigo: $('pessoal').value })
+    api({ tipo: 'login', codigo: $('pessoal').value, chave: cfg && cfg.chave || '' })
       .then(function (j) {
         sessao = { id: j.sessao, nome: j.nome }; guardar(G_SES, sessao, lembrado());
         $('pessoal').value = ''; abrirScan(j.resumo);
@@ -278,6 +280,7 @@ var CONFIG_CIFRADA = {"v":2,"iter":600000,"sal":"ecifCLqPX/Dqw4J+oOftaw==","iv":
       .then(function () { $('btn-pessoa').disabled = false; $('btn-pessoa').textContent = 'Entrar'; });
   });
   $('btn-esquecer').addEventListener('click', function () {
+    terminarSessao();
     apagar(G_CFG); apagar(G_SES); cfg = null; sessao = null;
     mostrarEcra('ecra-pin'); $('pin').focus();
   });
@@ -287,7 +290,11 @@ var CONFIG_CIFRADA = {"v":2,"iter":600000,"sal":"ecifCLqPX/Dqw4J+oOftaw==","iv":
     mostrarEcra('ecra-scan');
     mostrarResumo(resumo);
   }
-  $('btn-sair').addEventListener('click', function () { pedirCodigoOutraVez(''); });
+  // Trocar pessoa: a sessão também deixa de valer no servidor
+  function terminarSessao() {
+    if (sessao && cfg) { try { api({ tipo: 'logout' }).catch(function () {}); } catch (e) {} }
+  }
+  $('btn-sair').addEventListener('click', function () { terminarSessao(); pedirCodigoOutraVez(''); });
 
   /* ---------- Câmara ---------- */
   $('btn-camara').addEventListener('click', ligarCamara);
@@ -358,6 +365,7 @@ var CONFIG_CIFRADA = {"v":2,"iter":600000,"sal":"ecifCLqPX/Dqw4J+oOftaw==","iv":
     inexistente: { c: 'erro',  i: '✕', t: 'Código não existe' },
     invalido:    { c: 'erro',  i: '✕', t: 'Código inválido' },
     anulado:     { c: 'aviso', i: '↺', t: 'Entrada anulada' },
+    anular_recusado: { c: 'aviso', i: '!', t: 'Não foi anulada' },
     falha:       { c: 'erro',  i: '⚠', t: 'Erro' }
   };
   function resultado(j) {
@@ -371,7 +379,7 @@ var CONFIG_CIFRADA = {"v":2,"iter":600000,"sal":"ecifCLqPX/Dqw4J+oOftaw==","iv":
     if (j.resultado === 'entrada' && j.bilhete) det = 'Bilhete ' + j.bilhete;
     if (j.resultado === 'ja_usado') det = 'Entrada registada às ' + j.hora + (j.por ? ' por ' + j.por : '');
     if (j.resultado === 'nao_pago') det = 'Estado da encomenda: ' + j.estado;
-    if (j.resultado === 'falha') det = j.mensagem;
+    if (j.resultado === 'falha' || j.resultado === 'anular_recusado') det = j.mensagem;
     $('r-detalhe').textContent = det;
     $('r-codigo').textContent = j.codigo || '';
     ultimoCodigo = j.codigo || '';
